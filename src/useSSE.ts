@@ -1,3 +1,5 @@
+import Cookies from "js-cookie";
+import { EventSourcePolyfill } from "event-source-polyfill";
 import { useEffect, useRef, useState, useCallback } from "react";
 
 export type SSEEvent<T = any> = {
@@ -12,6 +14,7 @@ export type UseSSEOptions = {
   maxRetryDelay?: number;
   onOpen?: (ev: Event) => void;
   onError?: (err: Event | Error) => void;
+  getToken?: () => string | null;
 };
 
 // JSON 자동 파서
@@ -94,8 +97,16 @@ export function useSSE<T = any>(url: string | null, options?: UseSSEOptions) {
         eventRef.current.close();
       } catch {}
     }
+    const headers: Record<string, string> = {};
+    if (options?.getToken) {
+      const token = options.getToken();
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+    }
 
-    const es = new EventSource(url, { withCredentials });
+    const es = new EventSourcePolyfill(url, { withCredentials, headers });
+
     eventRef.current = es;
 
     attach(es);
