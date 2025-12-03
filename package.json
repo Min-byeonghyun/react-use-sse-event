@@ -1,6 +1,6 @@
 {
   "name": "react-use-sse-event",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "React hook for EventSource (SSE) with auto-reconnect, JSON parse, and subscribe API.",
   "main": "dist/index.cjs",
   "module": "dist/index.js",
