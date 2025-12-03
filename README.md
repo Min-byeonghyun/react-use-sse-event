@@ -43,7 +43,6 @@ export default function App() {
       console.log("SSE message received:", event.data);
     });
 
-    // 컴포넌트 언마운트 시 구독 해제
     return () => unsubscribe();
   }, [subscribe]);
 
