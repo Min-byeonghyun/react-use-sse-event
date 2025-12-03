@@ -36,20 +36,27 @@ import React, { useEffect } from "react";
 import { useSSE } from "react-use-sse-event";
 
 export default function App() {
-  const { connected, subscribe } = useSSE("https://example.com/sse");
+  const { connected, messages, subscribe } = useSSE("https://example.com/sse");
 
   useEffect(() => {
-    // Subscribe to messages
     const unsubscribe = subscribe((event) => {
-      console.log("SSE message:", event);
+      console.log("SSE message received:", event.data);
     });
 
-    // Cleanup on unmount
+    // 컴포넌트 언마운트 시 구독 해제
     return () => unsubscribe();
   }, [subscribe]);
 
   return (
-    <div>Connection status: {connected ? "Connected" : "Disconnected"}</div>
+    <div>
+      Connection status: {connected ? "Connected" : "Disconnected"}
+      <div>
+        Received messages:
+        {messages.map((msg, idx) => (
+          <pre key={idx}>사용자: {msg.data.username}</pre>
+        ))}
+      </div>
+    </div>
   );
 }
 ```
@@ -66,7 +73,7 @@ const { connected, lastMessage, messages, subscribe, reconnect, close } =
     maxRetryDelay: 30000, // Maximum reconnect delay (ms)
     onOpen: () => console.log("SSE Connected!"),
     onError: (err) => console.error("SSE Error:", err),
-    getToken: () => Cookies.get("Authorization"), // Optional JWT token
+    getHeaders: () => Authorization: `Bearer ${Cookies.get("Authorization"), // Optional headers
   });
 ```
 
@@ -79,7 +86,7 @@ const { connected, lastMessage, messages, subscribe, reconnect, close } =
 | `maxRetryDelay`   | `number`                        | `30000`     | Maximum reconnect delay (ms)   |
 | `onOpen`          | `(ev: Event) => void`           | `undefined` | Callback when connection opens |
 | `onError`         | `(err: Event \| Error) => void` | `undefined` | Callback on error              |
-| `getToken`        | `() => void`                    | `undefined` | Callback on error              |
+| `getHeaders`      | `() => Record<string, string>`  | `undefined` | Callback on error              |
 
 ### 📡 API
 
