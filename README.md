@@ -43,7 +43,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    // Subscribe to a custom event "like"
+    // Subscribe to a custom event "addBid"
     const unsubscribe = subscribe("addBid", (event) => {
       console.log("Bid:", event.data);
     });
