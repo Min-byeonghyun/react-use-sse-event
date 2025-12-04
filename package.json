@@ -48,7 +48,6 @@
     "vitest": "^1.4.0"
   },
   "dependencies": {
-    "event-source-polyfill": "^1.0.31",
-    "js-cookie": "^3.0.5"
+    "event-source-polyfill": "^1.0.31"
   }
 }

@@ -1,4 +1,3 @@
-
 import { EventSourcePolyfill } from "event-source-polyfill";
 import { useEffect, useRef, useState, useCallback } from "react";
 
@@ -12,6 +11,7 @@ export type UseSSEOptions = {
   withCredentials?: boolean;
   retryDelay?: number;
   maxRetryDelay?: number;
+  maxMessages?: number;
   onOpen?: (ev: Event) => void;
   onError?: (err: Event | Error) => void;
   getHeaders?: () => Record<string, string>;
@@ -32,6 +32,7 @@ export function useSSE<T = any>(url: string | null, options?: UseSSEOptions) {
     withCredentials = false,
     retryDelay = 1000,
     maxRetryDelay = 30000,
+    maxMessages = 100,
     onOpen,
     onError,
   } = options || {};
@@ -39,7 +40,15 @@ export function useSSE<T = any>(url: string | null, options?: UseSSEOptions) {
   const eventRef = useRef<EventSource | null>(null); // EventSource 인스턴스
   const retryRef = useRef<number>(retryDelay); // 재시도 대기시간
   const reconnectTimer = useRef<number | null>(null); // 재연결 setTimeout id
-  const listenersRef = useRef(new Set<(e: SSEEvent<T>) => void>()); // subscribe 콜백
+  const listenersRef = useRef(
+    new Map<
+      string,
+      {
+        callbacks: Set<(e: SSEEvent<T>) => void>;
+        handler: (ev: MessageEvent) => void;
+      }
+    >()
+  ); // subscribe 콜백
 
   const [connected, setConnected] = useState(false); // 연결 상태 UI
   const [lastMessage, setLastMessage] = useState<SSEEvent<T> | null>(null); // 마지막 수신 이벤트
@@ -70,21 +79,6 @@ export function useSSE<T = any>(url: string | null, options?: UseSSEOptions) {
           retryRef.current = Math.min(retryRef.current * 2, maxRetryDelay);
         }
       };
-
-      src.onmessage = (ev) => {
-        const parsed: SSEEvent<T> = {
-          id: (ev as any).lastEventId,
-          event: ev.type,
-          data: parseData(ev.data),
-        };
-
-        // 내부 상태 업데이트
-        setLastMessage(parsed);
-        setMessages((prev) => [...prev, parsed]);
-
-        // listener 호출
-        listenersRef.current.forEach((fn) => fn(parsed));
-      };
     },
     [onOpen, onError, retryDelay, maxRetryDelay]
   );
@@ -98,14 +92,48 @@ export function useSSE<T = any>(url: string | null, options?: UseSSEOptions) {
       } catch {}
     }
     const headers = options?.getHeaders?.() ?? {};
-    
 
     const es = new EventSourcePolyfill(url, { withCredentials, headers });
 
     eventRef.current = es;
 
     attach(es);
+    registerEventListener("message");
   }, [url, withCredentials, attach]);
+
+  const registerEventListener = useCallback(
+    (eventName: string) => {
+      if (!eventRef.current) return;
+
+      // 재등록 X
+      if (listenersRef.current.has(eventName)) return;
+
+      const handler = (ev: MessageEvent) => {
+        const parsed: SSEEvent<T> = {
+          id: (ev as any).lastEventId,
+          event: eventName,
+          data: parseData(ev.data),
+        };
+
+        setLastMessage(parsed);
+        setMessages((prev) => {
+          const newMessages = [...prev, parsed];
+          // maxMessages 제한
+          if (newMessages.length > maxMessages) {
+            newMessages.splice(0, newMessages.length - maxMessages);
+          }
+          return newMessages;
+        });
+
+        const listeners = listenersRef.current.get(eventName)?.callbacks;
+        if (listeners) listeners.forEach((fn) => fn(parsed));
+      };
+
+      listenersRef.current.set(eventName, { callbacks: new Set(), handler });
+      eventRef.current.addEventListener(eventName, handler);
+    },
+    [maxMessages]
+  );
 
   // URL 변경 시 연결
 
@@ -125,10 +153,26 @@ export function useSSE<T = any>(url: string | null, options?: UseSSEOptions) {
     };
   }, [url, connect]);
 
-  const subscribe = useCallback((cb: (e: SSEEvent<T>) => void) => {
-    listenersRef.current.add(cb);
-    return () => listenersRef.current.delete(cb);
-  }, []);
+  const subscribe = useCallback(
+    (eventName: string, cb: (e: SSEEvent<T>) => void) => {
+      if (!listenersRef.current.has(eventName)) {
+        registerEventListener(eventName);
+      }
+
+      const entry = listenersRef.current.get(eventName)!;
+      entry.callbacks.add(cb);
+
+      // 구독 해제 시 Set에서 제거, Set이 비어있으면 EventSource handler 제거
+      return () => {
+        entry.callbacks.delete(cb);
+        if (entry.callbacks.size === 0) {
+          eventRef.current?.removeEventListener(eventName, entry.handler);
+          listenersRef.current.delete(eventName);
+        }
+      };
+    },
+    [registerEventListener]
+  );
 
   const close = useCallback(() => {
     if (eventRef.current) {
@@ -149,7 +193,7 @@ export function useSSE<T = any>(url: string | null, options?: UseSSEOptions) {
     connected,
     lastMessage, // 마지막 메시지
     messages, // 모든 메시지 배열 (자동 누적)
-    subscribe,
+    subscribe, // 이벤트별 구독
     close,
     reconnect: connect,
   };
